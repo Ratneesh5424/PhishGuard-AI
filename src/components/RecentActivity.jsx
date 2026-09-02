@@ -54,7 +54,7 @@ const defaultActivityData = [
 ];
 
 export const RecentActivity = ({ activities, className = '' }) => {
-  const displayActivities = activities && activities.length > 0 ? activities : defaultActivityData;
+  const displayActivities = Array.isArray(activities) ? activities : defaultActivityData;
 
   return (
     <motion.div
@@ -72,7 +72,12 @@ export const RecentActivity = ({ activities, className = '' }) => {
       </div>
 
       <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-[2px] before:bg-gradient-to-b before:from-cyan-500/40 before:via-indigo-500/30 before:to-transparent">
-        {displayActivities.slice(0, 5).map((item, idx) => {
+        {displayActivities.length === 0 ? (
+          <div className="py-6 text-center text-xs text-slate-500 font-mono">
+            No recent activity recorded for this device.
+          </div>
+        ) : (
+          displayActivities.slice(0, 5).map((item, idx) => {
           const Icon = item.icon || (item.type === 'phishing' ? ShieldAlert : item.type === 'suspicious' ? AlertTriangle : CheckCircle2);
           const iconColor = item.iconColor || (item.type === 'phishing' ? 'text-rose-400' : item.type === 'suspicious' ? 'text-amber-400' : 'text-emerald-400');
           const iconBg = item.iconBg || (item.type === 'phishing' ? 'bg-rose-500/10 border-rose-500/30' : item.type === 'suspicious' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30');
@@ -112,7 +117,7 @@ export const RecentActivity = ({ activities, className = '' }) => {
               </div>
             </motion.div>
           );
-        })}
+        }))}
       </div>
     </motion.div>
   );

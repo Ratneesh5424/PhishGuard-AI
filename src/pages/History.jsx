@@ -24,80 +24,13 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import { downloadPhishGuardPDF } from '../utils/pdfGenerator';
-
-const fallbackHistoryData = [
-  {
-    id: 'rep-001',
-    date: '2026-09-01 14:22',
-    displayDate: 'Today, 14:22',
-    subject: 'CRITICAL: Microsoft 365 Password Expiration Alert',
-    sender: 'security-alerts@account-verification-support.net',
-    riskScore: 92,
-    status: 'High Risk',
-    confidence: 98.4,
-    summary: 'Phishing attack detected with fraudulent Microsoft domain impersonation and credential harvesting link.',
-  },
-  {
-    id: 'rep-002',
-    date: '2026-09-01 09:45',
-    displayDate: 'Today, 09:45',
-    subject: 'Invoice INV-2026-8941 payment confirmation',
-    sender: 'billing@trusted-vendor.com',
-    riskScore: 4,
-    status: 'Safe',
-    confidence: 99.1,
-    summary: 'Clean commercial transaction invoice with verified SPF and DKIM signatures.',
-  },
-  {
-    id: 'rep-003',
-    date: '2026-08-31 18:30',
-    displayDate: 'Yesterday, 18:30',
-    subject: 'IRS Tax Refund Notification: Claim Your Funds',
-    sender: 'irs-online-verification@taxportal-update.org',
-    riskScore: 88,
-    status: 'High Risk',
-    confidence: 96.8,
-    summary: 'Government agency impersonation scam directing users to fake tax refund portal.',
-  },
-  {
-    id: 'rep-004',
-    date: '2026-08-31 11:15',
-    displayDate: 'Yesterday, 11:15',
-    subject: 'Suspicious login attempt on your GitHub account',
-    sender: 'noreply@github.com',
-    riskScore: 45,
-    status: 'Suspicious',
-    confidence: 95.0,
-    summary: 'Unusual sign-in notification from unrecognized IP address.',
-  },
-  {
-    id: 'rep-005',
-    date: '2026-08-29 16:00',
-    displayDate: 'Aug 29, 2026',
-    subject: 'Smart India Hackathon 2026 Sprint Review & Guide',
-    sender: 'organizers@sih2026.gov.in',
-    riskScore: 1,
-    status: 'Safe',
-    confidence: 99.8,
-    summary: 'Official institutional correspondence from Smart India Hackathon organizers.',
-  },
-  {
-    id: 'rep-006',
-    date: '2026-08-27 10:20',
-    displayDate: 'Aug 27, 2026',
-    subject: 'Urgent Wire Transfer Authorization Required for Vendor',
-    sender: 'cfo-exec@corporate-finance-direct.cc',
-    riskScore: 96,
-    status: 'High Risk',
-    confidence: 98.9,
-    summary: 'Business Email Compromise (BEC) wire transfer scam with forged executive headers.',
-  },
-];
+import { getDeviceId } from '../utils/deviceId';
 
 export const History = () => {
   const navigate = useNavigate();
 
-  const [reports, setReports] = useState(fallbackHistoryData);
+  // Clean empty state for new devices
+  const [reports, setReports] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
 
@@ -107,14 +40,23 @@ export const History = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // Fetch from Supabase via backend API on mount
+  // Fetch from Supabase via backend API on mount filtered by device_id
   const fetchSupabaseHistory = async () => {
     setIsLoading(true);
+    const deviceId = getDeviceId();
+
     try {
-      const res = await fetch('http://localhost:5000/api/history');
+      const res = await fetch(
+        `http://localhost:5000/api/history?deviceId=${encodeURIComponent(deviceId)}`,
+        {
+          headers: {
+            'x-device-id': deviceId,
+          },
+        }
+      );
       if (res.ok) {
         const data = await res.json();
-        if (data.records && Array.isArray(data.records) && data.records.length > 0) {
+        if (data.records && Array.isArray(data.records)) {
           setIsSupabaseConnected(true);
 
           // Format Supabase rows (id, sender, subject, risk_score, status, confidence, summary, analyzed_at)
@@ -165,30 +107,26 @@ export const History = () => {
       setIsLoading(false);
     }
 
-    // Fallback: check localStorage
+    // Fallback: check device-scoped localStorage
     try {
-      const stored = localStorage.getItem('phishguard_history');
+      const stored = localStorage.getItem(`phishguard_history_${deviceId}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const ids = new Set(parsed.map((p) => p.id));
-          const combined = [
-            ...parsed.map((p) => {
-              const score = typeof p.riskScore === 'number' ? p.riskScore : (typeof p.risk_score === 'number' ? p.risk_score : 0);
-              const statusLabel = score >= 71 ? 'High Risk' : score >= 31 ? 'Suspicious' : 'Safe';
-              return {
-                ...p,
-                riskScore: score,
-                status: statusLabel,
-              };
-            }),
-            ...fallbackHistoryData.filter((f) => !ids.has(f.id)),
-          ].sort((a, b) => {
+          const formatted = parsed.map((p) => {
+            const score = typeof p.riskScore === 'number' ? p.riskScore : (typeof p.risk_score === 'number' ? p.risk_score : 0);
+            const statusLabel = score >= 71 ? 'High Risk' : score >= 31 ? 'Suspicious' : 'Safe';
+            return {
+              ...p,
+              riskScore: score,
+              status: statusLabel,
+            };
+          }).sort((a, b) => {
             const timeA = a.analyzed_at ? new Date(a.analyzed_at).getTime() : new Date(a.date).getTime();
             const timeB = b.analyzed_at ? new Date(b.analyzed_at).getTime() : new Date(b.date).getTime();
             return timeB - timeA;
           });
-          setReports(combined);
+          setReports(formatted);
           return;
         }
       }
@@ -196,7 +134,7 @@ export const History = () => {
       // ignore
     }
 
-    setReports(fallbackHistoryData);
+    setReports([]);
   };
 
   useEffect(() => {
@@ -205,10 +143,11 @@ export const History = () => {
 
   // Delete row (from state, localStorage, and Supabase)
   const handleDelete = async (id) => {
+    const deviceId = getDeviceId();
     setReports((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       try {
-        localStorage.setItem('phishguard_history', JSON.stringify(updated));
+        localStorage.setItem(`phishguard_history_${deviceId}`, JSON.stringify(updated));
       } catch (e) {
         // ignore
       }
@@ -216,7 +155,12 @@ export const History = () => {
     });
 
     try {
-      await fetch(`http://localhost:5000/api/history/${id}`, { method: 'DELETE' });
+      await fetch(`http://localhost:5000/api/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-device-id': deviceId,
+        },
+      });
     } catch (e) {
       // ignore backend delete error
     }

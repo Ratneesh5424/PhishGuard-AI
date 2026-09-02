@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import { downloadPhishGuardPDF } from '../utils/pdfGenerator';
+import { getDeviceId } from '../utils/deviceId';
 
 export const Result = () => {
   const location = useLocation();
@@ -65,7 +66,15 @@ export const Result = () => {
 
     const fetchRecord = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/history/${recordId}`);
+        const deviceId = getDeviceId();
+        const res = await fetch(
+          `http://localhost:5000/api/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
+          {
+            headers: {
+              'x-device-id': deviceId,
+            },
+          }
+        );
         if (res.ok) {
           const json = await res.json();
           if (json.record && isMounted) {

@@ -20,78 +20,32 @@ import EmailTable from '../components/EmailTable';
 import ThreatTrendChart from '../components/ThreatTrendChart';
 import RecentActivity from '../components/RecentActivity';
 import Button from '../components/Button';
-
-const defaultFallbackRecords = [
-  {
-    id: 'rep-001',
-    subject: 'CRITICAL: Microsoft 365 Password Expiration Alert',
-    sender: 'security-alerts@account-verification-support.net',
-    risk_score: 92,
-    status: 'HIGH RISK',
-    analyzed_at: '2026-09-01T14:22:00Z',
-    summary: 'Phishing attack detected with fraudulent Microsoft domain impersonation and credential harvesting link.',
-  },
-  {
-    id: 'rep-002',
-    subject: 'Invoice INV-2026-8941 payment confirmation',
-    sender: 'billing@trusted-vendor.com',
-    risk_score: 4,
-    status: 'SAFE',
-    analyzed_at: '2026-09-01T09:45:00Z',
-    summary: 'Clean commercial transaction invoice with verified SPF and DKIM signatures.',
-  },
-  {
-    id: 'rep-003',
-    subject: 'IRS Tax Refund Notification: Claim Your Funds',
-    sender: 'irs-online-verification@taxportal-update.org',
-    risk_score: 88,
-    status: 'HIGH RISK',
-    analyzed_at: '2026-08-31T18:30:00Z',
-    summary: 'Government agency impersonation scam directing users to fake tax refund portal.',
-  },
-  {
-    id: 'rep-004',
-    subject: 'Suspicious login attempt on your GitHub account',
-    sender: 'noreply@github.com',
-    risk_score: 45,
-    status: 'SUSPICIOUS',
-    analyzed_at: '2026-08-31T11:15:00Z',
-    summary: 'Unusual sign-in notification from unrecognized IP address.',
-  },
-  {
-    id: 'rep-005',
-    subject: 'Smart India Hackathon 2026 Sprint Review & Guide',
-    sender: 'organizers@sih2026.gov.in',
-    risk_score: 1,
-    status: 'SAFE',
-    analyzed_at: '2026-08-29T16:00:00Z',
-    summary: 'Official institutional correspondence from Smart India Hackathon organizers.',
-  },
-  {
-    id: 'rep-006',
-    subject: 'Urgent Wire Transfer Authorization Required for Vendor',
-    sender: 'cfo-exec@corporate-finance-direct.cc',
-    risk_score: 96,
-    status: 'HIGH RISK',
-    analyzed_at: '2026-08-27T10:20:00Z',
-    summary: 'Business Email Compromise (BEC) wire transfer scam with forged executive headers.',
-  },
-];
+import { getDeviceId } from '../utils/deviceId';
 
 export const Dashboard = () => {
   const navigate = useNavigate();
 
-  const [records, setRecords] = useState(defaultFallbackRecords);
+  // A brand-new device starts with 0 reports, empty history, and blank charts
+  const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 1. Fetch live records from Supabase email_history table via backend API
+  // 1. Fetch live records from Supabase email_history table filtered by device_id
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
+    const deviceId = getDeviceId();
+
     try {
-      const res = await fetch('http://localhost:5000/api/history');
+      const res = await fetch(
+        `http://localhost:5000/api/history?deviceId=${encodeURIComponent(deviceId)}`,
+        {
+          headers: {
+            'x-device-id': deviceId,
+          },
+        }
+      );
       if (res.ok) {
         const data = await res.json();
-        if (data.records && Array.isArray(data.records) && data.records.length > 0) {
+        if (data.records && Array.isArray(data.records)) {
           // Guarantee newest first ordering (analyzed_at DESC)
           const sorted = [...data.records].sort((a, b) => {
             const timeA = a.analyzed_at ? new Date(a.analyzed_at).getTime() : 0;
@@ -108,31 +62,27 @@ export const Dashboard = () => {
       setIsLoading(false);
     }
 
-    // Fallback: check localStorage
+    // Fallback: check device-scoped localStorage
     try {
-      const stored = localStorage.getItem('phishguard_history');
+      const stored = localStorage.getItem(`phishguard_history_${deviceId}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const ids = new Set(parsed.map((p) => p.id));
-          const combined = [
-            ...parsed.map((p) => ({
-              id: p.id,
-              subject: p.subject,
-              sender: p.sender,
-              risk_score: p.riskScore ?? p.risk_score,
-              status: p.status,
-              confidence: p.confidence,
-              summary: p.summary,
-              analyzed_at: p.analyzed_at || p.date,
-            })),
-            ...defaultFallbackRecords.filter((f) => !ids.has(f.id)),
-          ].sort((a, b) => {
+          const formatted = parsed.map((p) => ({
+            id: p.id,
+            subject: p.subject,
+            sender: p.sender,
+            risk_score: p.riskScore ?? p.risk_score,
+            status: p.status,
+            confidence: p.confidence,
+            summary: p.summary,
+            analyzed_at: p.analyzed_at || p.date,
+          })).sort((a, b) => {
             const timeA = a.analyzed_at ? new Date(a.analyzed_at).getTime() : 0;
             const timeB = b.analyzed_at ? new Date(b.analyzed_at).getTime() : 0;
             return timeB - timeA;
           });
-          setRecords(combined);
+          setRecords(formatted);
           return;
         }
       }
@@ -140,7 +90,7 @@ export const Dashboard = () => {
       // ignore
     }
 
-    setRecords(defaultFallbackRecords);
+    setRecords([]);
   }, []);
 
   // 2. Auto-refresh dashboard after every completed analysis, on visibility change, or on focus
@@ -170,7 +120,7 @@ export const Dashboard = () => {
     };
   }, [fetchDashboardData]);
 
-  // 3. Computed Real Statistics from Supabase Records
+  // 3. Computed Real Statistics strictly from current device records
   const { totalCount, highRiskCount, suspiciousCount, safeCount, avgRisk } = useMemo(() => {
     const total = records.length;
     let high = 0;
@@ -202,7 +152,7 @@ export const Dashboard = () => {
     };
   }, [records]);
 
-  // 4. Group records by analyzed_at date for the 7-Day Threat Trend Chart
+  // 4. Group records by analyzed_at date for the 7-Day Threat Trend Chart (0 for clean device)
   const trendData = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const past7Days = [];
@@ -235,16 +185,15 @@ export const Dashboard = () => {
       }
     });
 
-    // Provide meaningful display data for charts
-    return past7Days.map((dayObj, idx) => ({
+    return past7Days.map((dayObj) => ({
       day: dayObj.day,
-      scanned: dayObj.scanned > 0 ? dayObj.scanned : Math.max(2, (idx + 1) * 3),
-      phishing: dayObj.phishing > 0 ? dayObj.phishing : (idx % 2 === 0 ? 1 : 2),
-      blocked: dayObj.blocked > 0 ? dayObj.blocked : (idx % 2 === 0 ? 1 : 2),
+      scanned: dayObj.scanned,
+      phishing: dayObj.phishing,
+      blocked: dayObj.blocked,
     }));
   }, [records]);
 
-  // 5. Recent Activity: Latest 5 analyses with sender, subject, status, and time
+  // 5. Recent Activity: Latest 5 analyses strictly for this device
   const recentActivities = useMemo(() => {
     return records.slice(0, 5).map((r, idx) => {
       const score = typeof r.risk_score === 'number' ? r.risk_score : (typeof r.riskScore === 'number' ? r.riskScore : 0);

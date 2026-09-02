@@ -16,12 +16,13 @@ function getSupabaseClient() {
 }
 
 /**
- * Saves a completed analysis record to Supabase `email_history` table.
+ * Saves a completed analysis record to Supabase `email_history` table with device isolation.
  *
  * @param {Object} analysisData - Formatted analysis report
+ * @param {string} [deviceId] - Unique device identifier
  * @returns {Promise<Object|null>} Inserted record or null
  */
-async function saveEmailHistory(analysisData) {
+async function saveEmailHistory(analysisData, deviceId) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     console.warn("⚠️ Supabase credentials not configured in server/.env. Skipping database persistence.");
@@ -39,6 +40,7 @@ async function saveEmailHistory(analysisData) {
     // 31–70 → SUSPICIOUS
     // 71–100 → HIGH RISK
     const calculatedStatus = score >= 71 ? "HIGH RISK" : score >= 31 ? "SUSPICIOUS" : "SAFE";
+    const assignedDeviceId = deviceId || analysisData.device_id || analysisData.deviceId || null;
 
     const payload = {
       sender: analysisData.sender || "unknown@sender.com",
@@ -48,12 +50,24 @@ async function saveEmailHistory(analysisData) {
       confidence: typeof analysisData.confidence === "number" ? analysisData.confidence : 97.5,
       summary: analysisData.executiveSummary || analysisData.summary || "Threat assessment completed.",
       analyzed_at: new Date().toISOString(),
+      ...(assignedDeviceId ? { device_id: assignedDeviceId } : {}),
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("email_history")
       .insert([payload])
       .select();
+
+    // Fallback: If device_id column does not exist yet in Supabase, retry insert without device_id
+    if (error && error.code === "42703") {
+      delete payload.device_id;
+      const retryRes = await supabase
+        .from("email_history")
+        .insert([payload])
+        .select();
+      data = retryRes.data;
+      error = retryRes.error;
+    }
 
     if (error) {
       console.error("Supabase insert error in email_history:", error.message);
@@ -68,21 +82,34 @@ async function saveEmailHistory(analysisData) {
 }
 
 /**
- * Fetches all analysis history records from Supabase ordered by newest first (analyzed_at DESC).
+ * Fetches analysis history records from Supabase for a specific device ordered by newest first (analyzed_at DESC).
  *
- * @returns {Promise<Array>} List of history records
+ * @param {string} [deviceId] - Optional device identifier to isolate records
+ * @returns {Promise<Array>} List of history records for this device
  */
-async function getEmailHistory() {
+async function getEmailHistory(deviceId) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     return [];
   }
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("email_history")
       .select("*")
       .order("analyzed_at", { ascending: false });
+
+    if (deviceId) {
+      query = query.eq("device_id", deviceId);
+    }
+
+    const { data, error } = await query;
+
+    // If device_id column does not exist yet in Supabase schema, return empty array to prevent data leakage across devices
+    if (error && error.code === "42703") {
+      console.warn("Supabase column 'device_id' does not exist yet in table email_history. Returning empty records for isolation.");
+      return [];
+    }
 
     if (error) {
       console.error("Supabase fetch error for email_history:", error.message);
@@ -107,23 +134,40 @@ async function getEmailHistory() {
 }
 
 /**
- * Fetches a single analysis history record from Supabase by ID.
+ * Fetches a single analysis history record from Supabase by ID with optional device verification.
  *
  * @param {string} id - Record UUID
+ * @param {string} [deviceId] - Optional device identifier
  * @returns {Promise<Object|null>} History record or null
  */
-async function getEmailHistoryById(id) {
+async function getEmailHistoryById(id, deviceId) {
   const supabase = getSupabaseClient();
   if (!supabase || !id) {
     return null;
   }
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("email_history")
       .select("*")
-      .eq("id", id)
-      .single();
+      .eq("id", id);
+
+    if (deviceId) {
+      query = query.eq("device_id", deviceId);
+    }
+
+    let { data, error } = await query.maybeSingle();
+
+    // Fallback if device_id column does not exist yet
+    if (error && error.code === "42703") {
+      const fallbackQuery = await supabase
+        .from("email_history")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      data = fallbackQuery.data;
+      error = fallbackQuery.error;
+    }
 
     if (error) {
       console.error(`Supabase fetch error for record ${id}:`, error.message);
@@ -146,22 +190,29 @@ async function getEmailHistoryById(id) {
 }
 
 /**
- * Deletes an email history record by ID from Supabase.
+ * Deletes an email history record by ID from Supabase with optional device check.
  *
  * @param {string} id - Record UUID
+ * @param {string} [deviceId] - Optional device identifier
  * @returns {Promise<boolean>} Success status
  */
-async function deleteEmailHistory(id) {
+async function deleteEmailHistory(id, deviceId) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     return false;
   }
 
   try {
-    const { error } = await supabase
+    let query = supabase
       .from("email_history")
       .delete()
       .eq("id", id);
+
+    if (deviceId) {
+      query = query.eq("device_id", deviceId);
+    }
+
+    const { error } = await query;
 
     if (error) {
       console.error("Supabase delete error:", error.message);

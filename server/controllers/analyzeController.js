@@ -43,15 +43,25 @@ async function analyzeEmail(req, res) {
       });
     }
 
+    // Extract device_id from headers, body, or query
+    const deviceId =
+      req.headers["x-device-id"] ||
+      (req.body && (req.body.deviceId || req.body.device_id)) ||
+      req.query.deviceId ||
+      req.query.device_id ||
+      "";
+
     const analysisResult = await analyzeEmailWithGemini(emailContent);
 
     // Requirement: Every successful analysis creates a unique report ID and saves to Supabase email_history
     const uniqueReportId = require("crypto").randomUUID();
     analysisResult.id = uniqueReportId;
     analysisResult.historyId = uniqueReportId;
+    analysisResult.device_id = deviceId;
+    analysisResult.deviceId = deviceId;
 
     try {
-      const savedRecord = await saveEmailHistory(analysisResult);
+      const savedRecord = await saveEmailHistory(analysisResult, deviceId);
       if (savedRecord && savedRecord.id) {
         analysisResult.id = savedRecord.id;
         analysisResult.historyId = savedRecord.id;
@@ -125,11 +135,17 @@ async function exportPdf(req, res) {
 }
 
 /**
- * Controller to fetch history records from Supabase email_history table.
+ * Controller to fetch history records from Supabase email_history table filtered by device_id.
  */
 async function getHistory(req, res) {
   try {
-    const records = await getEmailHistory();
+    const deviceId =
+      req.headers["x-device-id"] ||
+      req.query.deviceId ||
+      req.query.device_id ||
+      "";
+
+    const records = await getEmailHistory(deviceId);
     return res.status(200).json({
       success: true,
       records: records || [],
@@ -154,7 +170,13 @@ async function getHistoryById(req, res) {
       return res.status(400).json({ success: false, error: "History record ID is required." });
     }
 
-    const record = await getEmailHistoryById(id);
+    const deviceId =
+      req.headers["x-device-id"] ||
+      req.query.deviceId ||
+      req.query.device_id ||
+      "";
+
+    const record = await getEmailHistoryById(id, deviceId);
     if (!record) {
       return res.status(404).json({ success: false, error: "History record not found." });
     }
@@ -179,7 +201,13 @@ async function deleteHistory(req, res) {
       return res.status(400).json({ success: false, error: "History record ID is required." });
     }
 
-    const deleted = await deleteEmailHistory(id);
+    const deviceId =
+      req.headers["x-device-id"] ||
+      req.query.deviceId ||
+      req.query.device_id ||
+      "";
+
+    const deleted = await deleteEmailHistory(id, deviceId);
     return res.status(200).json({ success: deleted });
   } catch (error) {
     console.error("Delete History Controller Error:", error.message);

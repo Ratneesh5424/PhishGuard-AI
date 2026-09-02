@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import UploadCard from '../components/UploadCard';
+import { getDeviceId } from '../utils/deviceId';
 
 const SAMPLE_PHISHING_EMAIL = `From: "Microsoft Security Team" <no-reply@auth-update.top>
 To: target-user@organization.com
@@ -82,7 +83,9 @@ export const AnalyzeEmail = () => {
     setErrorMessage('');
 
     try {
-      // Build multipart/form-data with field name "email"
+      const deviceId = getDeviceId();
+
+      // Build multipart/form-data with field name "email" and device identity
       const formData = new FormData();
 
       if (selectedFile) {
@@ -92,8 +95,14 @@ export const AnalyzeEmail = () => {
         formData.append('email', textBlob, 'email.eml');
       }
 
-      const response = await fetch('http://localhost:5000/api/analyze', {
+      formData.append('deviceId', deviceId);
+      formData.append('device_id', deviceId);
+
+      const response = await fetch(`http://localhost:5000/api/analyze?deviceId=${encodeURIComponent(deviceId)}`, {
         method: 'POST',
+        headers: {
+          'x-device-id': deviceId,
+        },
         body: formData,
       });
 
@@ -114,13 +123,31 @@ export const AnalyzeEmail = () => {
         throw new Error(serverError);
       }
 
-      const data = await response.json();
+      const resJson = await response.json();
+      const data = resJson.data || resJson;
 
       if (!data || data.riskScore === undefined) {
         throw new Error(data?.error || 'Analysis failed: Invalid response received from server.');
       }
 
       const reportId = data.id || data.historyId || `rep-${Date.now()}`;
+
+      // Persist to device-scoped localStorage fallback
+      try {
+        const storageKey = `phishguard_history_${deviceId}`;
+        const existing = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const newRecord = {
+          ...data,
+          id: reportId,
+          historyId: reportId,
+          device_id: deviceId,
+          analyzed_at: data.analyzed_at || new Date().toISOString(),
+        };
+        const updated = [newRecord, ...existing.filter((item) => item.id !== reportId)];
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      } catch (storageErr) {
+        // ignore storage errors
+      }
 
       // Notify dashboard of new scan without stale session caching
       try {

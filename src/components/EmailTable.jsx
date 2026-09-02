@@ -47,11 +47,11 @@ const defaultEmails = [
 ];
 
 export const EmailTable = ({
-  emails = defaultEmails,
+  emails,
   onSelectEmail,
   className = '',
 }) => {
-  const displayEmails = emails.length > 0 ? emails : defaultEmails;
+  const displayEmails = Array.isArray(emails) ? emails : defaultEmails;
 
   return (
     <div
@@ -72,8 +72,8 @@ export const EmailTable = ({
           <tbody className="divide-y divide-slate-800/60">
             {displayEmails.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
-                  No email records found.
+                <td colSpan={6} className="px-6 py-10 text-center text-slate-500 font-mono text-xs">
+                  No email records found for this device.
                 </td>
               </tr>
             ) : (
