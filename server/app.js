@@ -44,7 +44,7 @@ app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
 // Register API Routes
 app.use("/api", analyzeRoutes);
-app.use("/api/analyze", analyzeRoutes);
+app.use("/", analyzeRoutes);
 
 // Health check endpoints
 app.get("/", (req, res) => {
