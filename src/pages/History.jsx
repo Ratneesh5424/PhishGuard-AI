@@ -48,7 +48,7 @@ export const History = () => {
 
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/history?deviceId=${encodeURIComponent(deviceId)}`,
+        `${API_BASE_URL}/history?deviceId=${encodeURIComponent(deviceId)}`,
         {
           headers: {
             'x-device-id': deviceId,
@@ -156,7 +156,7 @@ export const History = () => {
     });
 
     try {
-      await fetch(`${API_BASE_URL}/api/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
+      await fetch(`${API_BASE_URL}/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
         method: 'DELETE',
         headers: {
           'x-device-id': deviceId,

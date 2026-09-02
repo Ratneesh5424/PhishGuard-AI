@@ -69,7 +69,7 @@ export const Result = () => {
       try {
         const deviceId = getDeviceId();
         const res = await fetch(
-          `${API_BASE_URL}/api/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
+          `${API_BASE_URL}/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
           {
             headers: {
               'x-device-id': deviceId,

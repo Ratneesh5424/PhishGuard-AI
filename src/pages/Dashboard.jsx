@@ -37,7 +37,7 @@ export const Dashboard = () => {
 
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/history?deviceId=${encodeURIComponent(deviceId)}`,
+        `${API_BASE_URL}/history?deviceId=${encodeURIComponent(deviceId)}`,
         {
           headers: {
             'x-device-id': deviceId,

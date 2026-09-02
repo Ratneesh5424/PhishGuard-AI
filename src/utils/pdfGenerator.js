@@ -735,7 +735,7 @@ export async function downloadPhishGuardPDF(analysisData) {
 
   try {
     // 1. Primary: Generate forensic PDF directly via backend API
-    const response = await fetch(`${API_BASE_URL}/api/export-pdf`, {
+    const response = await fetch(`${API_BASE_URL}/export-pdf`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -99,7 +99,7 @@ export const AnalyzeEmail = () => {
       formData.append('deviceId', deviceId);
       formData.append('device_id', deviceId);
 
-      const response = await fetch(`${API_BASE_URL}/api/analyze?deviceId=${encodeURIComponent(deviceId)}`, {
+      const response = await fetch(`${API_BASE_URL}/analyze?deviceId=${encodeURIComponent(deviceId)}`, {
         method: 'POST',
         headers: {
           'x-device-id': deviceId,
