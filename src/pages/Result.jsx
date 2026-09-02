@@ -29,6 +29,7 @@ import {
 import Button from '../components/Button';
 import { downloadPhishGuardPDF } from '../utils/pdfGenerator';
 import { getDeviceId } from '../utils/deviceId';
+import { API_BASE_URL } from '../utils/apiConfig';
 
 export const Result = () => {
   const location = useLocation();
@@ -68,7 +69,7 @@ export const Result = () => {
       try {
         const deviceId = getDeviceId();
         const res = await fetch(
-          `http://localhost:5000/api/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
+          `${API_BASE_URL}/api/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
           {
             headers: {
               'x-device-id': deviceId,

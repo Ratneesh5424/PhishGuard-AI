@@ -16,6 +16,7 @@ import {
 import Button from '../components/Button';
 import UploadCard from '../components/UploadCard';
 import { getDeviceId } from '../utils/deviceId';
+import { API_BASE_URL } from '../utils/apiConfig';
 
 const SAMPLE_PHISHING_EMAIL = `From: "Microsoft Security Team" <no-reply@auth-update.top>
 To: target-user@organization.com
@@ -98,7 +99,7 @@ export const AnalyzeEmail = () => {
       formData.append('deviceId', deviceId);
       formData.append('device_id', deviceId);
 
-      const response = await fetch(`http://localhost:5000/api/analyze?deviceId=${encodeURIComponent(deviceId)}`, {
+      const response = await fetch(`${API_BASE_URL}/api/analyze?deviceId=${encodeURIComponent(deviceId)}`, {
         method: 'POST',
         headers: {
           'x-device-id': deviceId,

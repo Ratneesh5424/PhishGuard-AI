@@ -21,6 +21,7 @@ import ThreatTrendChart from '../components/ThreatTrendChart';
 import RecentActivity from '../components/RecentActivity';
 import Button from '../components/Button';
 import { getDeviceId } from '../utils/deviceId';
+import { API_BASE_URL } from '../utils/apiConfig';
 
 export const Dashboard = () => {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export const Dashboard = () => {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/api/history?deviceId=${encodeURIComponent(deviceId)}`,
+        `${API_BASE_URL}/api/history?deviceId=${encodeURIComponent(deviceId)}`,
         {
           headers: {
             'x-device-id': deviceId,

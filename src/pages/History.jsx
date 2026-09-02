@@ -25,6 +25,7 @@ import {
 import Button from '../components/Button';
 import { downloadPhishGuardPDF } from '../utils/pdfGenerator';
 import { getDeviceId } from '../utils/deviceId';
+import { API_BASE_URL } from '../utils/apiConfig';
 
 export const History = () => {
   const navigate = useNavigate();
@@ -47,7 +48,7 @@ export const History = () => {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/api/history?deviceId=${encodeURIComponent(deviceId)}`,
+        `${API_BASE_URL}/api/history?deviceId=${encodeURIComponent(deviceId)}`,
         {
           headers: {
             'x-device-id': deviceId,
@@ -155,7 +156,7 @@ export const History = () => {
     });
 
     try {
-      await fetch(`http://localhost:5000/api/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
+      await fetch(`${API_BASE_URL}/api/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
         method: 'DELETE',
         headers: {
           'x-device-id': deviceId,
