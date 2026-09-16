@@ -1,6 +1,10 @@
-export { default as Login } from './Login';
-export { default as Dashboard } from './Dashboard';
-export { default as AnalyzeEmail } from './AnalyzeEmail';
-export { default as Result } from './Result';
-export { default as History } from './History';
-export { default as Settings } from './Settings';
+export { Login } from './Login';
+export { Dashboard } from './Dashboard';
+export { AnalyzeEmail } from './AnalyzeEmail';
+export { HeaderForensics } from './HeaderForensics';
+export { GeoTrace } from './GeoTrace';
+export { DomainIntelligence } from './DomainIntelligence';
+export { AiForensicReport } from './AiForensicReport';
+export { CaseManagement } from './CaseManagement';
+export { Settings } from './Settings';
+export { RecentInvestigations } from './RecentInvestigations';

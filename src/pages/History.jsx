@@ -26,9 +26,12 @@ import Button from '../components/Button';
 import { downloadPhishGuardPDF } from '../utils/pdfGenerator';
 import { getDeviceId } from '../utils/deviceId';
 import { API_BASE_URL } from '../utils/apiConfig';
+import { useThreat } from '../context/ThreatContext';
+import { api } from '../lib/api';
 
 export const History = () => {
   const navigate = useNavigate();
+  const { openInvestigation, setCurrentInvestigation } = useThreat();
 
   // Clean empty state for new devices
   const [reports, setReports] = useState([]);
@@ -47,22 +50,20 @@ export const History = () => {
     const deviceId = getDeviceId();
 
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/history?deviceId=${encodeURIComponent(deviceId)}`,
+      const data = await api(
+        `/api/history?deviceId=${encodeURIComponent(deviceId)}`,
         {
           headers: {
             'x-device-id': deviceId,
           },
         }
       );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.records && Array.isArray(data.records)) {
-          setIsSupabaseConnected(true);
+      if (data && data.records && Array.isArray(data.records)) {
+        setIsSupabaseConnected(true);
 
           // Format Supabase rows (id, sender, subject, risk_score, status, confidence, summary, analyzed_at)
-          const formatted = data.records.map((r) => {
-            const dateObj = r.analyzed_at ? new Date(r.analyzed_at) : new Date();
+          const formatted = data.records.filter(Boolean).map((r) => {
+            const dateObj = r?.analyzed_at ? new Date(r.analyzed_at) : new Date();
             const year = dateObj.getFullYear();
             const month = String(dateObj.getMonth() + 1).padStart(2, '0');
             const day = String(dateObj.getDate()).padStart(2, '0');
@@ -72,22 +73,23 @@ export const History = () => {
             const isToday =
               dateObj.toDateString() === new Date().toDateString();
 
-            const score = typeof r.risk_score === 'number' ? r.risk_score : (typeof r.riskScore === 'number' ? r.riskScore : 0);
+            const score = typeof r?.risk_score === 'number' ? r.risk_score : (typeof r?.riskScore === 'number' ? r.riskScore : 0);
             const statusLabel = score >= 71 ? 'High Risk' : score >= 31 ? 'Suspicious' : 'Safe';
 
             return {
-              id: r.id || `rep-${Date.now()}`,
+              id: r?.id || `rep-${Date.now()}`,
               date: `${year}-${month}-${day} ${hours}:${mins}`,
               displayDate: isToday
                 ? `Today, ${hours}:${mins}`
                 : `${month}/${day}/${year}`,
-              subject: r.subject || 'Analyzed Email Threat Assessment',
-              sender: r.sender || 'unknown@sender.com',
+              subject: r?.subject || 'Analyzed Email Threat Assessment',
+              sender: r?.sender || 'unknown@sender.com',
               riskScore: score,
               status: statusLabel,
-              confidence: typeof r.confidence === 'number' ? r.confidence : 97.5,
-              summary: r.summary || '',
-              analyzed_at: r.analyzed_at,
+              confidence: typeof r?.confidence === 'number' ? r.confidence : 97.5,
+              summary: r?.summary || '',
+              analyzed_at: r?.analyzed_at,
+              startTime: r?.startTime ?? (r?.analyzed_at ? new Date(r.analyzed_at).getTime() : Date.now()),
             };
           });
 
@@ -114,13 +116,14 @@ export const History = () => {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const formatted = parsed.map((p) => {
-            const score = typeof p.riskScore === 'number' ? p.riskScore : (typeof p.risk_score === 'number' ? p.risk_score : 0);
+          const formatted = parsed.filter(Boolean).map((p) => {
+            const score = typeof p?.riskScore === 'number' ? p.riskScore : (typeof p?.risk_score === 'number' ? p.risk_score : 0);
             const statusLabel = score >= 71 ? 'High Risk' : score >= 31 ? 'Suspicious' : 'Safe';
             return {
               ...p,
               riskScore: score,
               status: statusLabel,
+              startTime: p?.startTime ?? (p?.analyzed_at ? new Date(p.analyzed_at).getTime() : Date.now()),
             };
           }).sort((a, b) => {
             const timeA = a.analyzed_at ? new Date(a.analyzed_at).getTime() : new Date(a.date).getTime();
@@ -156,7 +159,7 @@ export const History = () => {
     });
 
     try {
-      await fetch(`${API_BASE_URL}/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
+      await api(`/api/history/${id}?deviceId=${encodeURIComponent(deviceId)}`, {
         method: 'DELETE',
         headers: {
           'x-device-id': deviceId,
@@ -168,9 +171,11 @@ export const History = () => {
   };
 
   const handleDownloadReport = async (report) => {
+    if (!report) return;
     try {
       await downloadPhishGuardPDF({
         ...report,
+        startTime: report?.startTime ?? (report?.analyzed_at ? new Date(report.analyzed_at).getTime() : Date.now()),
         riskLevel: report.status,
         verdict: report.status,
         authentication: {
@@ -184,35 +189,46 @@ export const History = () => {
     }
   };
 
-  // Requirement: Clicking a history item opens the Result page by fetching that exact record ID from Supabase
+  // Requirement: Clicking a history item opens the report matching the analyzed report
   const handleViewReport = (report) => {
+    if (!report) return;
+    const invData = {
+      ...report,
+      startTime: report?.startTime ?? (report?.analyzed_at ? new Date(report.analyzed_at).getTime() : Date.now()),
+    };
+    if (typeof openInvestigation === 'function') {
+      openInvestigation(invData);
+    } else if (typeof setCurrentInvestigation === 'function') {
+      setCurrentInvestigation(invData);
+    }
     navigate('/result', {
       state: {
         recordId: report.id,
         isHistoryView: true,
-        initialRecord: report,
+        initialRecord: invData,
       },
     });
   };
 
   // Filter & Search Logic
   const filteredReports = useMemo(() => {
-    return reports
+    return (reports || [])
+      .filter(Boolean)
       .filter((item) => {
         if (statusFilter !== 'All' && item.status !== statusFilter) {
           return false;
         }
         if (searchQuery.trim() !== '') {
           const q = searchQuery.toLowerCase();
-          const matchesSubject = item.subject.toLowerCase().includes(q);
-          const matchesSender = item.sender.toLowerCase().includes(q);
+          const matchesSubject = (item.subject || '').toLowerCase().includes(q);
+          const matchesSender = (item.sender || '').toLowerCase().includes(q);
           return matchesSubject || matchesSender;
         }
         return true;
       })
       .sort((a, b) => {
-        const timeA = a.analyzed_at ? new Date(a.analyzed_at).getTime() : new Date(a.date).getTime();
-        const timeB = b.analyzed_at ? new Date(b.analyzed_at).getTime() : new Date(b.date).getTime();
+        const timeA = a?.analyzed_at ? new Date(a.analyzed_at).getTime() : (a?.date ? new Date(a.date).getTime() : 0);
+        const timeB = b?.analyzed_at ? new Date(b.analyzed_at).getTime() : (b?.date ? new Date(b.date).getTime() : 0);
         if (sortOrder === 'newest') {
           return timeB - timeA;
         } else {
@@ -229,12 +245,13 @@ export const History = () => {
   }, [filteredReports, currentPage]);
 
   // Statistics calculation
-  const totalReportsCount = reports.length;
-  const highRiskCount = reports.filter((r) => r.status === 'High Risk' || (typeof r.riskScore === 'number' && r.riskScore >= 71)).length;
-  const safeCount = reports.filter((r) => r.status === 'Safe' || (typeof r.riskScore === 'number' && r.riskScore <= 30)).length;
+  const safeReports = (reports || []).filter(Boolean);
+  const totalReportsCount = safeReports.length;
+  const highRiskCount = safeReports.filter((r) => r?.status === 'High Risk' || (typeof r?.riskScore === 'number' && r.riskScore >= 71)).length;
+  const safeCount = safeReports.filter((r) => r?.status === 'Safe' || (typeof r?.riskScore === 'number' && r.riskScore <= 30)).length;
   const avgRisk =
     totalReportsCount > 0
-      ? Math.round(reports.reduce((acc, r) => acc + r.riskScore, 0) / totalReportsCount)
+      ? Math.round(safeReports.reduce((acc, r) => acc + (typeof r?.riskScore === 'number' ? r.riskScore : 0), 0) / totalReportsCount)
       : 0;
 
   const getStatusBadge = (status) => {
@@ -396,13 +413,13 @@ export const History = () => {
                         </td>
                       </tr>
                     ) : (
-                      paginatedReports.map((report) => {
+                      paginatedReports.map((report, idx) => {
                         const isHigh = report.riskScore >= 71;
                         const isSusp = report.riskScore >= 31 && report.riskScore <= 70;
 
                         return (
                           <motion.tr
-                            key={report.id}
+                            key={report.id ? `${report.id}-${idx}` : `rep-${idx}`}
                             layout
                             initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}

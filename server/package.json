@@ -1,23 +1,19 @@
 {
-  "name": "phishguard-backend",
+  "name": "server",
   "version": "1.0.0",
-  "description": "PhishGuard AI Backend Service",
-  "main": "app.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "node app.js"
+    "dev": "node --watch-path=routes --watch-path=controllers --watch-path=services --watch-path=app.js app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@supabase/supabase-js": "^2.49.1",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
     "jspdf": "^4.2.1",
-    "multer": "^1.4.5-lts.1",
     "pdf-lib": "^1.17.1"
   }
 }

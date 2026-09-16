@@ -30,6 +30,7 @@ import Button from '../components/Button';
 import { downloadPhishGuardPDF } from '../utils/pdfGenerator';
 import { getDeviceId } from '../utils/deviceId';
 import { API_BASE_URL } from '../utils/apiConfig';
+import { api } from '../lib/api';
 
 export const Result = () => {
   const location = useLocation();
@@ -38,11 +39,10 @@ export const Result = () => {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const initialReport = useMemo(() => {
-    if (location.state?.analysisData) {
-      return location.state.analysisData;
-    }
-    if (location.state?.initialRecord) {
-      return location.state.initialRecord;
+    const data = location.state?.analysisData || location.state?.initialRecord;
+    if (data && typeof data === 'object') {
+      data.startTime = data?.startTime ?? Date.now();
+      return data;
     }
     return null;
   }, [location.state]);
@@ -68,17 +68,15 @@ export const Result = () => {
     const fetchRecord = async () => {
       try {
         const deviceId = getDeviceId();
-        const res = await fetch(
-          `${API_BASE_URL}/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
+        const json = await api(
+          `/api/history/${recordId}?deviceId=${encodeURIComponent(deviceId)}`,
           {
             headers: {
               'x-device-id': deviceId,
             },
           }
         );
-        if (res.ok) {
-          const json = await res.json();
-          if (json.record && isMounted) {
+        if (json && json.record && isMounted) {
             const r = json.record;
             const score = typeof r.risk_score === 'number' ? r.risk_score : 0;
             const isHigh = score >= 71;
@@ -166,6 +164,7 @@ export const Result = () => {
               urls: Array.isArray(r.urls) ? r.urls : [],
               date: r.analyzed_at,
               analyzed_at: r.analyzed_at,
+              startTime: r?.startTime ?? (r?.analyzed_at ? new Date(r.analyzed_at).getTime() : Date.now()),
               recommendation: isHigh
                 ? 'Do NOT click links, scan QR codes, or submit credentials. Quarantine and report this email immediately.'
                 : isSusp

@@ -75,9 +75,14 @@ export function buildPhishGuardJsPdfDoc(data = {}) {
   const rawScore = typeof data.riskScore === 'number' ? data.riskScore : (typeof data.risk_score === 'number' ? data.risk_score : 0);
   const score = Math.min(100, Math.max(0, rawScore));
   
-  const isHigh = score >= 71;
-  const isSusp = score >= 31 && score <= 70;
-  const statusLabel = isHigh ? 'HIGH RISK' : isSusp ? 'SUSPICIOUS' : 'SAFE';
+  const statusLabel = data.threatLevel || (
+    score <= 20 ? 'SAFE' :
+    score <= 40 ? 'LOW' :
+    score <= 60 ? 'MEDIUM' :
+    score <= 80 ? 'HIGH' : 'CRITICAL'
+  );
+  const isHigh = score > 60;
+  const isSusp = score > 20 && score <= 60;
   
   const confidence = typeof data.confidence === 'number' ? data.confidence : 97.5;
   const sender = data.sender || 'security-alerts@domain.com';

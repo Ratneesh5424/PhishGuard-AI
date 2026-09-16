@@ -10,60 +10,50 @@ const analyzeRoutes = require("./routes/analyze");
 
 const app = express();
 
-// Register CORS for localhost, Vercel frontend, and production clients
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, or server-to-server)
-      if (!origin) return callback(null, true);
-      // Allow all localhost origins, vercel.app domains, or wildcard
-      if (
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1") ||
-        origin.endsWith(".vercel.app") ||
-        origin === "https://phishguard-ai.vercel.app"
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Accept",
-      "x-device-id",
-      "X-Device-Id",
-    ],
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: ["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-device-id",
+    "Accept",
+    "Origin",
+    "X-Requested-With",
+  ],
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
 // Register API Routes
 app.use("/api", analyzeRoutes);
-app.use("/", analyzeRoutes);
+app.use("/api/analyze", analyzeRoutes);
 
-// Health check endpoints
+// Direct aliases
+app.use("/stats", (req, res, next) => { req.url = "/stats"; analyzeRoutes(req, res, next); });
+app.use("/history", (req, res, next) => { req.url = "/history" + req.url; analyzeRoutes(req, res, next); });
+app.use("/cases", (req, res, next) => { req.url = "/cases"; analyzeRoutes(req, res, next); });
+app.use("/domain", (req, res, next) => { req.url = "/domain" + req.url; analyzeRoutes(req, res, next); });
+app.use("/report", (req, res, next) => { req.url = "/report" + req.url; analyzeRoutes(req, res, next); });
+
+// Health check endpoint
 app.get("/", (req, res) => {
   res.json({
-    project: "PhishGuard AI Backend",
+    project: "PhishGuard AI",
     status: "Backend Running 🚀",
     version: "1.0.0",
-    uptime: process.uptime(),
   });
-});
-
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
 
 module.exports = app;

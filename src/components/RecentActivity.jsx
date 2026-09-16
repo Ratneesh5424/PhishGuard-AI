@@ -84,7 +84,7 @@ export const RecentActivity = ({ activities, className = '' }) => {
 
           return (
             <motion.div
-              key={item.id || idx}
+              key={`${item.id || 'act'}-${idx}`}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: idx * 0.08, duration: 0.35 }}

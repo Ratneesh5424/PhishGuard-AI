@@ -16,13 +16,12 @@ function getSupabaseClient() {
 }
 
 /**
- * Saves a completed analysis record to Supabase `email_history` table with device isolation.
+ * Saves a completed analysis record to Supabase `email_history` table.
  *
  * @param {Object} analysisData - Formatted analysis report
- * @param {string} [deviceId] - Unique device identifier
  * @returns {Promise<Object|null>} Inserted record or null
  */
-async function saveEmailHistory(analysisData, deviceId) {
+async function saveEmailHistory(analysisData) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     console.warn("⚠️ Supabase credentials not configured in server/.env. Skipping database persistence.");
@@ -40,7 +39,6 @@ async function saveEmailHistory(analysisData, deviceId) {
     // 31–70 → SUSPICIOUS
     // 71–100 → HIGH RISK
     const calculatedStatus = score >= 71 ? "HIGH RISK" : score >= 31 ? "SUSPICIOUS" : "SAFE";
-    const assignedDeviceId = deviceId || analysisData.device_id || analysisData.deviceId || null;
 
     const payload = {
       sender: analysisData.sender || "unknown@sender.com",
@@ -50,24 +48,13 @@ async function saveEmailHistory(analysisData, deviceId) {
       confidence: typeof analysisData.confidence === "number" ? analysisData.confidence : 97.5,
       summary: analysisData.executiveSummary || analysisData.summary || "Threat assessment completed.",
       analyzed_at: new Date().toISOString(),
-      ...(assignedDeviceId ? { device_id: assignedDeviceId } : {}),
+      device_id: analysisData.deviceId || analysisData.device_id || null,
     };
 
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from("email_history")
       .insert([payload])
       .select();
-
-    // Fallback: If device_id column does not exist yet in Supabase, retry insert without device_id
-    if (error && error.code === "42703") {
-      delete payload.device_id;
-      const retryRes = await supabase
-        .from("email_history")
-        .insert([payload])
-        .select();
-      data = retryRes.data;
-      error = retryRes.error;
-    }
 
     if (error) {
       console.error("Supabase insert error in email_history:", error.message);
@@ -82,34 +69,155 @@ async function saveEmailHistory(analysisData, deviceId) {
 }
 
 /**
- * Fetches analysis history records from Supabase for a specific device ordered by newest first (analyzed_at DESC).
- *
- * @param {string} [deviceId] - Optional device identifier to isolate records
- * @returns {Promise<Array>} List of history records for this device
+ * Calculates live dashboard KPI statistics from Supabase email_history.
  */
-async function getEmailHistory(deviceId) {
+async function getStats() {
+  const records = await getEmailHistory();
+  let safeCount = 0;
+  let lowCount = 0;
+  let mediumCount = 0;
+  let highCount = 0;
+  let criticalCount = 0;
+
+  for (const r of records) {
+    const s = typeof r.risk_score === "number" ? r.risk_score : 0;
+    if (s <= 20) safeCount++;
+    else if (s <= 40) lowCount++;
+    else if (s <= 70) mediumCount++;
+    else if (s <= 90) highCount++;
+    else criticalCount++;
+  }
+
+  const highRiskCount = highCount + criticalCount;
+  const latestCase = records.length > 0 ? records[0] : null;
+
+  return {
+    totalReports: records.length,
+    safeCount,
+    lowCount,
+    mediumCount,
+    highCount,
+    criticalCount,
+    highRiskCount,
+    latestCase,
+  };
+}
+
+/**
+ * Retrieves case investigations derived from Supabase email_history records.
+ */
+async function getCases() {
+  const records = await getEmailHistory();
+  return records.map((r) => {
+    const score = typeof r.risk_score === "number" ? r.risk_score : 0;
+    const severity = score >= 90 ? "CRITICAL" : score >= 71 ? "HIGH" : score >= 31 ? "MEDIUM" : "SAFE";
+    const shortId = (r.id || "").slice(0, 8).toUpperCase();
+    const caseId = `CASE-2026-${shortId}`;
+    return {
+      id: caseId,
+      caseId: caseId,
+      rawId: r.id,
+      title: r.subject || "Email Threat Assessment",
+      subject: r.subject || "Email Threat Assessment",
+      severity,
+      threatLevel: severity,
+      level: severity,
+      status: "Open",
+      assignedTo: "Lead Threat Hunter",
+      threatType: r.summary || "Email Threat Assessment",
+      riskScore: score,
+      score,
+      originCountry: "Origin Node",
+      targetDomain: (r.sender || "").split("@")[1] || "unknown.com",
+      sender: r.sender,
+      createdAt: r.analyzed_at,
+      updatedAt: r.analyzed_at,
+      timestamp: r.analyzed_at,
+      confidence: r.confidence || 98.6,
+      summary: r.summary,
+      notes: [
+        {
+          id: `n-${r.id}`,
+          author: "PhishGuard AI Engine",
+          text: r.summary || "Automated deterministic forensic evaluation completed.",
+          timestamp: r.analyzed_at ? new Date(r.analyzed_at).toLocaleString() : new Date().toLocaleString(),
+        },
+      ],
+      investigationRef: {
+        id: r.id,
+        caseId,
+        subject: r.subject,
+        sender: r.sender,
+        score,
+        riskScore: score,
+        level: severity,
+        threatLevel: severity,
+        verdict: r.status,
+        status: r.status,
+        confidence: r.confidence || 98.6,
+        summary: r.summary,
+        executiveSummary: r.summary,
+        date: r.analyzed_at,
+      },
+    };
+  });
+}
+
+/**
+ * Fetches an analysis report from Supabase by caseId or UUID.
+ */
+async function getReportById(caseId) {
+  if (!caseId) return null;
+  const cleanId = String(caseId).replace(/^CASE-\d+-/i, "").toLowerCase();
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("email_history")
+      .select("*")
+      .or(`id.eq.${caseId},id.ilike.${cleanId}%`)
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      const single = await getEmailHistoryById(caseId);
+      return single;
+    }
+    const r = data[0];
+    const score = typeof r.risk_score === "number" ? r.risk_score : 0;
+    const severity = score >= 90 ? "CRITICAL" : score >= 71 ? "HIGH" : score >= 31 ? "MEDIUM" : "SAFE";
+    return {
+      ...r,
+      caseId: `CASE-2026-${(r.id || "").slice(0, 8).toUpperCase()}`,
+      riskScore: score,
+      score,
+      threatLevel: severity,
+      level: severity,
+      executiveSummary: r.summary,
+      verdict: r.status,
+    };
+  } catch (err) {
+    console.error("Error retrieving report by ID:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetches all analysis history records from Supabase ordered by newest first (analyzed_at DESC).
+ *
+ * @returns {Promise<Array>} List of history records
+ */
+async function getEmailHistory() {
   const supabase = getSupabaseClient();
   if (!supabase) {
     return [];
   }
 
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from("email_history")
       .select("*")
       .order("analyzed_at", { ascending: false });
-
-    if (deviceId) {
-      query = query.eq("device_id", deviceId);
-    }
-
-    const { data, error } = await query;
-
-    // If device_id column does not exist yet in Supabase schema, return empty array to prevent data leakage across devices
-    if (error && error.code === "42703") {
-      console.warn("Supabase column 'device_id' does not exist yet in table email_history. Returning empty records for isolation.");
-      return [];
-    }
 
     if (error) {
       console.error("Supabase fetch error for email_history:", error.message);
@@ -134,40 +242,23 @@ async function getEmailHistory(deviceId) {
 }
 
 /**
- * Fetches a single analysis history record from Supabase by ID with optional device verification.
+ * Fetches a single analysis history record from Supabase by ID.
  *
  * @param {string} id - Record UUID
- * @param {string} [deviceId] - Optional device identifier
  * @returns {Promise<Object|null>} History record or null
  */
-async function getEmailHistoryById(id, deviceId) {
+async function getEmailHistoryById(id) {
   const supabase = getSupabaseClient();
   if (!supabase || !id) {
     return null;
   }
 
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from("email_history")
       .select("*")
-      .eq("id", id);
-
-    if (deviceId) {
-      query = query.eq("device_id", deviceId);
-    }
-
-    let { data, error } = await query.maybeSingle();
-
-    // Fallback if device_id column does not exist yet
-    if (error && error.code === "42703") {
-      const fallbackQuery = await supabase
-        .from("email_history")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle();
-      data = fallbackQuery.data;
-      error = fallbackQuery.error;
-    }
+      .eq("id", id)
+      .single();
 
     if (error) {
       console.error(`Supabase fetch error for record ${id}:`, error.message);
@@ -182,6 +273,10 @@ async function getEmailHistoryById(id, deviceId) {
     return {
       ...data,
       status: calculatedStatus,
+      riskScore: score,
+      score,
+      level: calculatedStatus,
+      threatLevel: calculatedStatus,
     };
   } catch (err) {
     console.error("Supabase service error while retrieving history by id:", err.message);
@@ -190,29 +285,22 @@ async function getEmailHistoryById(id, deviceId) {
 }
 
 /**
- * Deletes an email history record by ID from Supabase with optional device check.
+ * Deletes an email history record by ID from Supabase.
  *
  * @param {string} id - Record UUID
- * @param {string} [deviceId] - Optional device identifier
  * @returns {Promise<boolean>} Success status
  */
-async function deleteEmailHistory(id, deviceId) {
+async function deleteEmailHistory(id) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     return false;
   }
 
   try {
-    let query = supabase
+    const { error } = await supabase
       .from("email_history")
       .delete()
       .eq("id", id);
-
-    if (deviceId) {
-      query = query.eq("device_id", deviceId);
-    }
-
-    const { error } = await query;
 
     if (error) {
       console.error("Supabase delete error:", error.message);
@@ -232,4 +320,7 @@ module.exports = {
   getEmailHistory,
   getEmailHistoryById,
   deleteEmailHistory,
+  getStats,
+  getCases,
+  getReportById,
 };
