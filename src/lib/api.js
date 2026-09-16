@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:5000";
+const BASE_URL = "https://phishguard-ai-1-pafd.onrender.com/api";
 
 export async function api(path, options = {}) {
   const url = path.startsWith("http")
