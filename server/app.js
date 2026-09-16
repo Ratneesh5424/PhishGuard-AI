@@ -11,7 +11,12 @@ const analyzeRoutes = require("./routes/analyze");
 const app = express();
 
 const corsOptions = {
-  origin: ["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+  origin: [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://phishguard-ai-ebon-ten.vercel.app",
+    "https://phishguard-ai-lsp5jtzpd-xrx1.vercel.app"
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: [
